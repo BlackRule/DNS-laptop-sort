@@ -51,7 +51,9 @@ function gpuPerformReplacements(name:string){
     [/Intel Iris (Xe|Plus) Graphics/, 'Intel Iris $1'],
     ['AMD', ''],
     ['Ryzen 3 7320U with Radeon Graphics','Ryzen 3 7330U with Radeon Graphics'],
-    ['Athlon Silver 3050U with Radeon Graphics','Radeon Athlon Silver 3050U']
+    ['Athlon Silver 3050U with Radeon Graphics','Radeon Athlon Silver 3050U'],
+    [" 4 ГБ",""],
+    [" для ноутбуков"," Laptop GPU"],
   ]
   for (const replacement of replacements) {
     name = name.replace(replacement[0], replacement[1])
@@ -108,10 +110,15 @@ function compareLaptops(element: Element, element2: Element) {
     if(laptopPrecomputedScore!==undefined) return laptopPrecomputedScore
     const cpuName = (element as HTMLElement).dataset[cpuDataAttribName]!
     let gpuName=(element as HTMLElement).dataset[gpuDataAttribName]!
-    if(gpuName==='Radeon Graphics') gpuName=`${cpuName} with Radeon Graphics`.replace('AMD ','')
-    gpuName = gpuPerformReplacements(gpuName)
-    const cpuScore = cpuScores01[cpuName]
+    if(gpuName==='Radeon Graphics') {
+      gpuName = `${cpuName} with Radeon Graphics`.replace('AMD ', '')
+      gpuName = gpuPerformReplacements(gpuName)
+      if(gpuScores01[gpuName]===undefined){
+        gpuName = `Radeon ${cpuName}`.replace('AMD ', '')
+      }
+    }
     const gpuScore = gpuScores01[gpuName]
+    const cpuScore = cpuScores01[cpuName]
     if(cpuScore===undefined || gpuScore===undefined) debugger
     return cpuScore+gpuScore
   }
@@ -139,12 +146,12 @@ chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendRespons
     for (let i = 0; i < laptopsParent.childElementCount; i++) {
       const laptop = laptopsParent.children[i] as HTMLDivElement
       let text = (laptop.children[1]!/*a.catalog-product__name.ui-link.ui-link_black*/.firstChild! as HTMLSpanElement)/*span*/.innerText
-      const match = text.match(/([\d.]+)"[^\[]+\[(?:английская раскладка, )?([^,]+), ([^,]+), ([^,]+)(?:, ([^,]+))?, RAM (\d+) ГБ, ([^,]+), ([^,]+), ([^\]]+)]/)
-      if (match === null || match.length < 10) debugger//throw Error()
+      //TODO capture eMMC to storage
+      const match = text.match(/(?<screenDiag>[\d.]+)"[^\[]+\[(?:английская раскладка, )?(?<screenResolution>[^,]+), (?<screenTech>[^,]+), (?<cpu>[^,]+)(?<cpuCores>, ([^,]+))?, RAM (?<ramN>\d+) ГБ, (?<storage>[^,]+),(?: eMMC 32 ГБ,)? (?<gpu>[^,]+), (?<os>[^\]]+)]?/)
+      if (match === null || match.groups===undefined || Object.keys(match.groups).length < 9) debugger//throw Error()
       else {
-        let [_, screenDiag, screenResolution, screenTech, cpu, cpuCores, ramN, storage, gpu, os] = match
-        cpu=cpuPerformReplacements(cpu)
-        gpu=gpuPerformReplacements(gpu).trim()
+        let cpu=cpuPerformReplacements(match.groups.cpu)
+        let gpu=gpuPerformReplacements(match.groups.gpu).trim()
 
         for (const gpuSuspect of gpuSuspects) {
           if(gpu.match(gpuSuspect)!==null){
@@ -161,8 +168,8 @@ chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendRespons
         laptop.dataset[cpuDataAttribName] = cpu
         laptop.dataset[gpuDataAttribName] = gpu
         //FIXME get rid of colors etc!
-        const model = _
-        laptop.dataset[laptopModelDataAttribName] = model.trim()
+        //match.groups.model
+        // laptop.dataset[laptopModelDataAttribName] = model.trim()
       }
     }
 
