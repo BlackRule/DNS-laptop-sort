@@ -1,1 +1,1 @@
-export type Message="sortCPUs"|"autoShowMore"
+export type Message="sortCPUs"|"autoShowMore"|"sortLaptops"

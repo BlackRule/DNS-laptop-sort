@@ -1,6 +1,12 @@
 import {Message} from "./types";
 import {cpus} from "./data";
 
+const cpuDataAttribName = 'CPU';
+const gpuDataAttribName = 'GPU';
+
+
+type CompareFn=(element: Element, element2: Element)=>number
+
 //returns fn that executes f only if f wasn't invoked for delay
 function debounce(f:(...args)=>void,delay:number){
   let timeout:null|number=null
@@ -10,14 +16,15 @@ function debounce(f:(...args)=>void,delay:number){
   }
 }
 
-function extractText(element: Element) {
+function extractTextCPU(element: Element) {
   if (element.firstElementChild?.firstChild?.nodeType !== Node.TEXT_NODE) return ''
   // @ts-ignore
   return (element.firstElementChild.firstChild.wholeText as string).trim()
 }
 
-function findIndex(element: Element) {
-  let t = extractText(element)
+
+
+function findCPUIndex(name:string) {
   //Apple M1
 //Apple M1 Max
 //Apple M1 Pro
@@ -31,30 +38,52 @@ function findIndex(element: Element) {
     ['Intel Processor', 'Intel'],
   ]
   for (const replacement of replacements) {
-    t = t.replace(replacement[0], replacement[1])
+    name = name.replace(replacement[0], replacement[1])
   }
-  let idx = cpus.lastIndexOf(t)
+  let idx = cpus.lastIndexOf(name)
   if (idx === -1) {
-    throw new Error(`"${t}"`)
+    throw new Error(`"${name}"`)
   }
   return idx
 }
 
-function compare(element: Element, element2: Element) {
-  let c1 = findIndex(element)
-  let c2 = findIndex(element2)
+function compareCPUs(element: Element, element2: Element) {
+  let c1 = findCPUIndex(extractTextCPU(element))
+  let c2 = findCPUIndex(extractTextCPU(element2))
   /*if (c2 - c1 > 0) {
         console.log(`swapped ${extractText(element)} and ${extractText(element2)}`)
     }*/
   return c1 - c2 //reversed
 }
 
+function compareLaptops(element: Element, element2: Element) {
+  let c1 = findCPUIndex((element as HTMLElement).dataset[cpuDataAttribName]!)
+  let c2 = findCPUIndex((element2 as HTMLElement).dataset[cpuDataAttribName]!)
+  /*if (c2 - c1 > 0) {
+        console.log(`swapped ${extractText(element)} and ${extractText(element2)}`)
+    }*/
+  return c1 - c2 //reversed
+}
+
+function bubbleSort(parent:Element,compareFn:CompareFn){
+  let swapped = true
+  while (swapped) {
+    swapped = false
+    for (let i = 0; i < parent.childElementCount - 1; i++) {
+      if (compareFn(parent.children[i], parent.children[i + 1]) > 0) {
+        parent.insertBefore(parent.children[i + 1], parent.children[i])
+        swapped = true
+      }
+    }
+  }
+}
+
 chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendResponse) {
   switch (msg) {
-    case "sortCPUs": //TODO make work with expanded Модель процессора as well
+    case "sortCPUs": { //TODO make work with expanded Модель процессора as well
       // use mutation observer for that
       // `as HTMLSpanElement | null` is a fix to TS bug "Variable is of type 'never' after potential assignment in a forEach lambda"
-      let success = false
+      let success = true
       let element: HTMLSpanElement | null = null as HTMLSpanElement | null
       document.querySelectorAll('.ui-collapse__link-text').forEach((el) => {
         if (el.innerHTML === 'Модель процессора') {
@@ -74,7 +103,6 @@ chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendRespons
           console.dir(element)
           throw new Error('FAIL parent')
         }
-        let swapped = true
 
         for (let i = 0; i < cpuList.childElementCount; i++) {
           if (cpuList.children[i].firstElementChild?.querySelectorAll('.catalog-filter-count').length === 0) {
@@ -83,30 +111,24 @@ chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendRespons
             continue
           }
           try {
-            findIndex(cpuList.children[i])
+            findCPUIndex(extractTextCPU(cpuList.children[i]))
           } catch (e) {
-            console.log(extractText(cpuList.children[i]))
-            swapped = false
-            success = false
+            console.log(extractTextCPU(cpuList.children[i]))
+            throw e
           }
         }
-        while (swapped) {
-          swapped = false
-          for (let i = 0; i < cpuList.childElementCount - 1; i++) {
-            if (compare(cpuList.children[i], cpuList.children[i + 1]) > 0) {
-              cpuList.insertBefore(cpuList.children[i + 1], cpuList.children[i])
-              swapped = true
-            }
-          }
-        }
-        success = true
+
+        bubbleSort(cpuList, compareCPUs)
+
       } catch (e) {
         console.log(e)
+        success = false
       } finally {
         sendResponse("done");
         if (element === null) return
         if (success) element.style.backgroundColor = 'green'
       }
+    }
       break;
     case "autoShowMore":
       let clicksLeft=10
@@ -153,6 +175,51 @@ chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendRespons
       observer.observe(target, {childList: true})
       buttonShowMore.click()
 
+      break;
+    case "sortLaptops": {
+      let success = true
+      try {
+        const selector = '.catalog-products.view-simple';
+        let laptopsParent: HTMLSpanElement | null = document.querySelector(selector)
+        if (laptopsParent === null) {
+          throw new Error(`FAIL ${selector}`)
+        } else {
+          console.log(`found ${selector}`)
+        }
+        //merge all laptopsParents' children into first laptopsParent
+        const laptopsParents=document.querySelectorAll(selector)
+        for (let i = 1; i < laptopsParents.length; i++) {
+          while (laptopsParents[i].childElementCount>0) {
+            laptopsParent.appendChild(laptopsParents[i].firstElementChild!)
+          }
+        }
+        console.log(`done merge all laptopsParents' children into first laptopsParent`)
+        //assign data attributes to laptops
+        for (let i = 0; i < laptopsParent.childElementCount; i++) {
+          const laptop=laptopsParent.children[i] as HTMLDivElement
+          let text=(laptop.children[1]!/*a.catalog-product__name.ui-link.ui-link_black*/.
+            firstChild! as HTMLSpanElement)/*span*/.innerText
+          const match = text.match(/([\d.]+)"[^\[]+\[(?:английская раскладка, )?([^,]+), ([^,]+), ([^,]+)(?:, ([^,]+))?, RAM (\d+) ГБ, ([^,]+), ([^,]+), ([^\]]+)]/)
+          if(match===null||match.length<10||match[4]==='TN+film') debugger//throw Error()
+          else {
+            const [_, screenDiag, screenResolution, screenTech, cpu, cpuCores, ramN, storage, gpu, os] = match
+            laptop.dataset[cpuDataAttribName] = cpu
+            laptop.dataset[gpuDataAttribName] = gpu
+          }
+        }
+        console.log(`done assign data attributes to laptops`)
+
+        bubbleSort(laptopsParent, compareLaptops)
+        console.log(`done bubbleSort(laptopsParent, compareLaptops)`)
+
+      } catch (e) {
+        console.log(e)
+        success = false
+      } finally {
+        sendResponse("done");
+        if (success) console.log("sort laptops DONE")
+      }
+    }
       break;
   }
 
