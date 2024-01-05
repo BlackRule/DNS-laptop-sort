@@ -69,8 +69,11 @@ Load `dist` directory
 ## Test
 `npx jest` or `npm run test`
 # Plan
-~Сортировать сами ноутбуки 
-Только для Apple учитывать "ядра: " Используя число в сист.счисления с основанием макс_колво_вариантов_среди_CPU_GPU
+~Сортировать сами ноутбуки
+Только для Apple учитывать "ядра: "
 CPU ignore apple
-Видеокарты.
+# Perf improvements
+PerformReplacements Once
+fill laptopsPrecomputedScore
+preprocess cpuPerformReplacements
  

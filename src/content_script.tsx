@@ -1,8 +1,12 @@
 import {Message} from "./types";
-import {cpus} from "./cpu_data";
+import {cpus, cpuScores01} from "./cpu_data";
+import {gpuScores01} from "./gpu_data";
+import {laptopsPrecomputedScore} from "./laptopsPrecomputedScore";
+import {gpuSuspects} from "./data";
 
 const cpuDataAttribName = 'CPU';
 const gpuDataAttribName = 'GPU';
+const laptopModelDataAttribName = 'laptop';
 
 
 type CompareFn=(element: Element, element2: Element)=>number
@@ -22,9 +26,7 @@ function extractTextCPU(element: Element) {
   return (element.firstElementChild.firstChild.wholeText as string).trim()
 }
 
-
-
-function findCPUIndex(name:string) {
+function cpuPerformReplacements(name:string){
   //Apple M1
 //Apple M1 Max
 //Apple M1 Pro
@@ -40,7 +42,25 @@ function findCPUIndex(name:string) {
   for (const replacement of replacements) {
     name = name.replace(replacement[0], replacement[1])
   }
-  let idx = cpus.lastIndexOf(name)
+  return name
+}
+
+function gpuPerformReplacements(name:string){
+  const replacements:[searchValue:string,replaceValue:string][] = [
+    // @ts-ignore
+    [/Intel Iris (Xe|Plus) Graphics/, 'Intel Iris $1'],
+    ['AMD', ''],
+    ['Ryzen 3 7320U with Radeon Graphics','Ryzen 3 7330U with Radeon Graphics'],
+    ['Athlon Silver 3050U with Radeon Graphics','Radeon Athlon Silver 3050U']
+  ]
+  for (const replacement of replacements) {
+    name = name.replace(replacement[0], replacement[1])
+  }
+  return name
+}
+
+function findCPUIndex(name:string) {
+  let idx = cpus.lastIndexOf(cpuPerformReplacements(name))
   if (idx === -1) {
     throw new Error(`"${name}"`)
   }
@@ -81,12 +101,24 @@ function compareCPUs(element: Element, element2: Element) {
 }
 
 function compareLaptops(element: Element, element2: Element) {
-  let c1 = findCPUIndex((element as HTMLElement).dataset[cpuDataAttribName]!)
-  let c2 = findCPUIndex((element2 as HTMLElement).dataset[cpuDataAttribName]!)
-  /*if (c2 - c1 > 0) {
-        console.log(`swapped ${extractText(element)} and ${extractText(element2)}`)
-    }*/
-  return c1 - c2 //reversed
+  const getScore=(element: Element)=> {
+    const laptopPrecomputedScore = laptopsPrecomputedScore[
+      (element as HTMLElement).dataset[laptopModelDataAttribName]!
+      ];
+    if(laptopPrecomputedScore!==undefined) return laptopPrecomputedScore
+    const cpuName = (element as HTMLElement).dataset[cpuDataAttribName]!
+    let gpuName=(element as HTMLElement).dataset[gpuDataAttribName]!
+    if(gpuName==='Radeon Graphics') gpuName=`${cpuName} with Radeon Graphics`.replace('AMD ','')
+    gpuName = gpuPerformReplacements(gpuName)
+    const cpuScore = cpuScores01[cpuName]
+    const gpuScore = gpuScores01[gpuName]
+    if(cpuScore===undefined || gpuScore===undefined) debugger
+    return cpuScore+gpuScore
+  }
+
+  let c1 = getScore(element)
+  let c2 = getScore(element2)
+  return c1 - c2
 }
 
 function bubbleSort(parent:Element,compareFn:CompareFn){
@@ -103,6 +135,40 @@ function bubbleSort(parent:Element,compareFn:CompareFn){
 }
 
 chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendResponse) {
+  function assignDataAttributesToLaptopsAndMark(laptopsParent: HTMLSpanElement) {
+    for (let i = 0; i < laptopsParent.childElementCount; i++) {
+      const laptop = laptopsParent.children[i] as HTMLDivElement
+      let text = (laptop.children[1]!/*a.catalog-product__name.ui-link.ui-link_black*/.firstChild! as HTMLSpanElement)/*span*/.innerText
+      const match = text.match(/([\d.]+)"[^\[]+\[(?:английская раскладка, )?([^,]+), ([^,]+), ([^,]+)(?:, ([^,]+))?, RAM (\d+) ГБ, ([^,]+), ([^,]+), ([^\]]+)]/)
+      if (match === null || match.length < 10) debugger//throw Error()
+      else {
+        let [_, screenDiag, screenResolution, screenTech, cpu, cpuCores, ramN, storage, gpu, os] = match
+        cpu=cpuPerformReplacements(cpu)
+        gpu=gpuPerformReplacements(gpu).trim()
+
+        for (const gpuSuspect of gpuSuspects) {
+          if(gpu.match(gpuSuspect)!==null){
+          laptop.style.backgroundColor='lightpink'
+          laptop.title=`GPU can possibly be ${gpuSuspect}`
+          }
+        }
+        for (const cpuSuspect of gpuSuspects) {
+          if(cpu.match(cpuSuspect)!==null){
+            laptop.style.backgroundColor='lightpink'
+            laptop.title=`CPU can possibly be ${cpuSuspect}`
+          }
+        }
+        laptop.dataset[cpuDataAttribName] = cpu
+        laptop.dataset[gpuDataAttribName] = gpu
+        //FIXME get rid of colors etc!
+        const model = _
+        laptop.dataset[laptopModelDataAttribName] = model.trim()
+      }
+    }
+
+    console.log(`done assign data attributes to laptops`)
+  }
+
   switch (msg) {
     case "sortCPUs": { //TODO make work with expanded Модель процессора as well
       // use mutation observer for that
@@ -218,20 +284,8 @@ chrome.runtime.onMessage.addListener(function (msg: Message, sender, sendRespons
           }
         }
         console.log(`done merge all laptopsParents' children into first laptopsParent`)
-        //assign data attributes to laptops
-        for (let i = 0; i < laptopsParent.childElementCount; i++) {
-          const laptop=laptopsParent.children[i] as HTMLDivElement
-          let text=(laptop.children[1]!/*a.catalog-product__name.ui-link.ui-link_black*/.
-            firstChild! as HTMLSpanElement)/*span*/.innerText
-          const match = text.match(/([\d.]+)"[^\[]+\[(?:английская раскладка, )?([^,]+), ([^,]+), ([^,]+)(?:, ([^,]+))?, RAM (\d+) ГБ, ([^,]+), ([^,]+), ([^\]]+)]/)
-          if(match===null||match.length<10||match[4]==='TN+film') debugger//throw Error()
-          else {
-            const [_, screenDiag, screenResolution, screenTech, cpu, cpuCores, ramN, storage, gpu, os] = match
-            laptop.dataset[cpuDataAttribName] = cpu
-            laptop.dataset[gpuDataAttribName] = gpu
-          }
-        }
-        console.log(`done assign data attributes to laptops`)
+
+        assignDataAttributesToLaptopsAndMark(laptopsParent);
 
         bubbleSort(laptopsParent, compareLaptops)
         console.log(`done bubbleSort(laptopsParent, compareLaptops)`)
