@@ -1,5 +1,5 @@
 import {Message} from "./types";
-import {cpus} from "./data";
+import {cpus} from "./cpu_data";
 
 const cpuDataAttribName = 'CPU';
 const gpuDataAttribName = 'GPU';
@@ -25,6 +25,30 @@ function extractTextCPU(element: Element) {
 
 
 function findCPUIndex(name:string) {
+  //Apple M1
+//Apple M1 Max
+//Apple M1 Pro
+//Apple M2
+//Apple M2 Pro
+//Apple M3
+//Apple M3 Pro
+  const replacements = [
+    ['Intel Core i7 13700H', 'Intel Core i7-13700H'],
+    ['Intel Core i7-13620P', 'Intel Core i7-13620'], //fixme 13620P DOESN'T EXIST!
+    ['Intel Processor', 'Intel'],
+  ]
+  for (const replacement of replacements) {
+    name = name.replace(replacement[0], replacement[1])
+  }
+  let idx = cpus.lastIndexOf(name)
+  if (idx === -1) {
+    throw new Error(`"${name}"`)
+  }
+  return idx
+}
+
+function findGPUIndex(name:string) {
+  //TODO if not found => gpuScore = 2
   //Apple M1
 //Apple M1 Max
 //Apple M1 Pro
