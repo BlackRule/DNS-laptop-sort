@@ -69,11 +69,17 @@ Load `dist` directory
 ## Test
 `npx jest` or `npm run test`
 # Plan
-~Сортировать сами ноутбуки
+TODO
+"Apple M2 Pro 16-core",
+"Apple M2 Pro 19-core",
+"Apple M3 Pro 18-core",
+"Apple M1 Max 32-core"
+search those in src/content_script.tsx and "APPLE_TODO" in G:\seeObsidian\f42\src\gpu_data.ts
 Только для Apple учитывать "ядра: "
-CPU ignore apple
+
 # Perf improvements
 PerformReplacements Once
 fill laptopsPrecomputedScore
 preprocess cpuPerformReplacements
+
  
